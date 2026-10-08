@@ -1,4 +1,4 @@
-**Gesture-Controlled Interactive Periodic Table**
+# **Gesture-Controlled Interactive Periodic Table**
 
 haunt.gg/chits (Visit and leave a comment, I just want to increase my viewcount lol)
 
@@ -7,7 +7,7 @@ You can open the periodic table with a two-hand gesture, select elements by hove
 
 The project is built with Python, OpenCV, MediaPipe, and NumPy.
 
-**My Specs**
+### **My Specs**
 
 - Python: 3.12.10
 - Virtual environment - .venv
@@ -15,7 +15,7 @@ The project is built with Python, OpenCV, MediaPipe, and NumPy.
 - OpenCV: opencv-python
 - NumPy: numpy
 
-**How to Set it Up**
+### **How to Set it Up**
 
 - Open the folder where you save all files
 - Right click and open Windows Powershell
@@ -28,7 +28,7 @@ The project is built with Python, OpenCV, MediaPipe, and NumPy.
 
 4) **python -m pip install opencv-python mediapipe numpy**
 
-**How to Use**
+### **How to Use**
 (Let's say you've downloaded it and it works)
 - Draw a rectangle with both index tips first touching each other then ending the rectangle while touching each other
 - This should open up a periodic table (if it does not, just do it slowly or faster and with more accuracy, also first start apart and then bring the indexes closer) Example below: <img width="801" height="628" alt="Screenshot 2026-10-08 042616" src="https://github.com/user-attachments/assets/a71c97fa-bb72-4b23-b5a9-c7854d104b82" />
@@ -42,7 +42,7 @@ The project is built with Python, OpenCV, MediaPipe, and NumPy.
 - If you make a rectangle again, the table will close.
 VOILA!!! Just keep practicing your rectangles LOL.
 
-**Features:**
+### **Features:**
 
 - Two-hand rectangle gesture to open/close the periodic table
 - Interactive periodic table containing all 118 elements
@@ -58,7 +58,7 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Element-category color coding
 - Real-time hand tracking using MediaPipe
 
-**Currently Working On**
+### **Currently Working On**
 
 - Thinking of adding a custom builder which allows you to input n/p/e to build custom elements (and maybe display reasons why a given element cannot be built)
 - Maybe adding isotopes for all elements
