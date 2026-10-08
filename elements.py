@@ -1,3 +1,4 @@
+"""Module 4 - Defining the elements"""
 """Element data, periodic-table grid positions, and category classification."""
 
 # (symbol, name, mass number A). A is the common/most stable isotope's integer
