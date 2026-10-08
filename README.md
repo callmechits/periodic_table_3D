@@ -20,7 +20,7 @@ The project is built with Python, OpenCV, MediaPipe, and NumPy.
 - Run these commands (in order):
 1) *py -3.12 -m venv .venv*
 
-2) *.\.venv\Scripts\Activate.ps1* (If you get an error here run this first: *Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser*, confirm that you see this: *(.venv) PS C:\...\your-project>* after executing)
+2) * .\.venv\Scripts\Activate.ps1* (If you get an error here run this first: *Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser*, confirm that you see this: *(.venv) PS C:\...\your-project>* after executing)
 
 3) *python -m pip install --upgrade pip*
 
