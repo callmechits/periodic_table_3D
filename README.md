@@ -1,6 +1,6 @@
 **Gesture-Controlled Interactive Periodic Table**
 
-[Page that I just found out about](haunt.gg/chits)
+haunt.gg/chits (Visit and leave a comment, I just want to increase my viewcount lol)
 
 A real-time which turns a webcam into a visual interactive periodic table.
 You can open the periodic table with a two-hand gesture, select elements by hovering their thumb, and explore a simplified animated 3D Bohr-model representation using pinch-to-zoom and two-finger rotation.
