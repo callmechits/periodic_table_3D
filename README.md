@@ -18,13 +18,13 @@ The project is built with Python, OpenCV, MediaPipe, and NumPy.
 - Open the folder where you save all files
 - Right click and open Windows Powershell
 - Run these commands (in order):
-*py -3.12 -m venv .venv*
+1) *py -3.12 -m venv .venv*
 
-*.\.venv\Scripts\Activate.ps1* (If you get an error here run this first: *Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser*, confirm that you see this: *(.venv) PS C:\...\your-project>* after executing)
+2) *.\.venv\Scripts\Activate.ps1* (If you get an error here run this first: *Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser*, confirm that you see this: *(.venv) PS C:\...\your-project>* after executing)
 
-*python -m pip install --upgrade pip*
+3) *python -m pip install --upgrade pip*
 
-*python -m pip install opencv-python mediapipe numpy*
+4) *python -m pip install opencv-python mediapipe numpy*
 
 
 
