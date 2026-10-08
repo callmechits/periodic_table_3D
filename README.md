@@ -2,7 +2,7 @@
 
 haunt.gg/chits (Visit and leave a comment, I just want to increase my viewcount lol)
 
-A real-time which turns a webcam into a visual interactive periodic table.
+A real-time program which turns a webcam into a visual interactive periodic table.
 You can open the periodic table with a two-hand gesture, select elements by hovering their thumb, and explore a simplified animated 3D Bohr-model representation using pinch-to-zoom and two-finger rotation.
 
 The project is built with Python, OpenCV, MediaPipe, and NumPy.
