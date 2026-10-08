@@ -63,3 +63,5 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Thinking of adding a custom builder which allows you to input n/p/e to build custom elements (and maybe display reasons why a given element cannot be built)
 - Maybe adding isotopes for all elements
 - Sizes of orbits, neutrons, electrons, protons
+
+IGNORE : ![Repository Views](https://komarev.com)
