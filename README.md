@@ -1,4 +1,4 @@
-<img width="796" height="630" alt="image" src="https://github.com/user-attachments/assets/68592176-9c66-4bfb-9daf-cf92dc5a5d4a" />**Gesture-Controlled Interactive Periodic Table**
+**Gesture-Controlled Interactive Periodic Table**
 
 [Page that I just found out about](haunt.gg/chits)
 
