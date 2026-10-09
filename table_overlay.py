@@ -7,7 +7,7 @@ import mediapipe as mp
 from elements import ELEMENTS, grid_pos, category
 from gesture import RectGesture, INDEX_TIP
 from selection import Selector, THUMB_TIP, draw_progress
-from bohr import (BohrModel, put_label, back_rect, draw_back_button, draw_legend, mode_rect, draw_mode_button, draw_rotate_marker, YAW_SPEED, nav_rects, draw_nav_button)
+from bohr import (BohrModel, put_label, back_rect, draw_back_button, draw_legend, mode_rect, draw_mode_button, draw_rotate_marker, YAW_SPEED, nav_rects, draw_nav_button, rect_around, park_pos, draw_parked_electron, side_rect, draw_toggle)
 from camera import CameraThread
 from selection import Selector, THUMB_TIP, draw_progress, PointSmoother
 from pinch import PinchZoom
@@ -94,6 +94,7 @@ def draw_cursor(frame, pts):
 def main():
     pinch = PinchZoom(zmin = 0.3, zmax = 10.0)
     rot, manual, t_last = RotateControl(), False, 0.0
+    paused, zoom_locked = False, False
 
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity = 0, 
                                      min_detection_confidence=0.6,
@@ -141,21 +142,36 @@ def main():
                     model, t0, selector = BohrModel(chosen), now, Selector()
                     pinch.reset()
                     rot.reset()
-                    manual, t_last = False, now      # every view starts in auto-spin
+                    manual, paused, zoom_locked, t_last = False, False, False, now    # Fresh view state now
             else:
                 # ---- View mode: model + BACK + SPIN toggle ----
                 nav_prev, nav_next = nav_rects(w, h)
                 prev_z = (model.z - 2) % 118 + 1
                 next_z = model.z % 118 + 1
-                zones = {"back": back_rect(w, h), "mode": mode_rect(w, h), "prev": nav_prev, "next": nav_next}
+                zones = {"back": back_rect(w, h), "mode": mode_rect(w, h), "orbit": side_rect(w, 1), "zoom": side_rect(w, 2), "prev": nav_prev, "next": nav_next}
+                if model.detached:
+                    zones["electron"] = rect_around(park_pos(w, h), 26)
+                elif model.green_xy is not None:
+                    zones["electron"] = rect_around(model.green_xy, max(model.green_r + 14, 24))
+                
                 dt, t_last = now - t_last, now
+                
                 mid = rot.update([l.landmark for l in hands_lm], w, h) if manual else rot.release_hand()
                 if not manual:
                     rot.spin(dt, YAW_SPEED)          # auto-spin advances the shared yaw
                 # While rotating, pause the thumb dwell and the pinch zoom.
                 hover, progress, chosen = selector.update([] if mid else thumbs, zones, now)
-                zoom = pinch.update(None if mid else (hands_lm[0].landmark if hands_lm else None), w, h)
+                model.hold = (hover == "electron")
+                zoom = pinch.update(None if (mid or zoom_locked) else (hands_lm[0].landmark if hands_lm else None), w, h)
+                model.paused = paused
                 model.render(frame, (w // 2, h // 2), now - t0, zoom, rot.yaw, rot.pitch)
+                if model.detached:
+                    draw_parked_electron(frame, park_pos(w, h))
+                ion = model.ion_text()
+                if ion:
+                    put_label(frame, ion, (10, 84), 0.5)
+
+                
                 put_label(frame, model.info, (10, 24))
                 put_label(frame, f"zoom {zoom:.2f}x", (10, 44))
                 if manual:
@@ -163,9 +179,11 @@ def main():
                 draw_legend(frame, h)
                 draw_back_button(frame, zones["back"])
                 draw_mode_button(frame, zones["mode"], manual)
+                draw_toggle(frame, zones["orbit"], "ORBIT: " + ("HOLD" if paused else "RUN"))
+                draw_toggle(frame, zones["zoom"], "ZOOM: " + ("LOCK" if zoom_locked else "FREE"))
                 draw_nav_button(frame, nav_prev, "< " + ELEMENTS[prev_z][0])
                 draw_nav_button(frame, nav_next, ELEMENTS[next_z][0] + " >")
-                if hover is not None:
+                if hover in zones:
                     draw_progress(frame, zones[hover], progress)
                 if mid:
                     draw_rotate_marker(frame, mid)
@@ -175,6 +193,12 @@ def main():
                     manual = not manual
                 elif chosen in("prev", "next"):
                     model = BohrModel(prev_z if chosen == "prev" else next_z)
+                elif chosen == "electron":
+                    model.detached = not model.detached
+                elif chosen == "orbit":
+                    paused = not paused
+                elif chosen == "zoom":
+                    zoom_locked = not zoom_locked
             draw_cursor(frame, [] if mid else thumbs)   # thumb pointer, hidden while rotates
 
 
