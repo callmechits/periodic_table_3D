@@ -1,4 +1,4 @@
-#blue **Gesture-Controlled Interactive Periodic Table**
+# **Gesture-Controlled Interactive Periodic Table**
 
 haunt.gg/chits (Visit and leave a comment, I just want to increase my viewcount lol)
 
