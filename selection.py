@@ -54,7 +54,7 @@ class Selector:
         for p in thumbs:
             if self._hit(p, cells) is not None:
                 # Hysteresis: stay on the current cell while within MARGIN of it.
-                if self.hover is not None and _inside(p, cells[self.hover], MARGIN):
+                if self.hover in cells and _inside(p, cells[self.hover], MARGIN):
                     z = self.hover
                 else:
                     z = self._hit(p, cells)
