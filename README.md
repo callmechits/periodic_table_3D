@@ -59,9 +59,12 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Real-time hand tracking using MediaPipe
 - Stop the element's rotation completely to look at it statically
 - Take out outermost electron and learn about I.E. 1 (first ionization energy)
+- Switching between Quantum/Bohr Model's of the elements
+- Being able to view transition of electron between different orbits and wavelength/energy associated + position on visible spectrum
 
 ### **Currently Working On**
 
 - Thinking of adding a custom builder which allows you to input n/p/e to build custom elements (and maybe display reasons why a given element cannot be built)
 - ~~Maybe adding isotopes for all elements~~ (way too fricking big)
 - Sizes of orbits, neutrons, electrons, protons
+- ~~Probability distribution 3-D model~~ (implemented 09/10/26)
