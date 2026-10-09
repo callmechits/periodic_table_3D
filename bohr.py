@@ -5,6 +5,9 @@ import numpy as np
 import cv2
 from elements import ELEMENTS
 from ionization import IE1
+from functools import lru_cache
+from spectra import transition, wavelength_to_bgr, region
+from orbitals import build_cloud, config_lines, COL as ORB_COL
 
 # ---- Tunable parameters -------------------------------------------------
 NUC_CAP = 30                  # max nucleons drawn; heavier nuclei are scaled down
@@ -98,6 +101,17 @@ class BohrModel:
         self.hold = False
         self.green_xy, self.green_r = None, 0
         self.green_t, self._last_t = 0.0, 0.0
+        self.view = "bohr"
+        self._cloud = None
+
+        # --- Spectrum ---
+        self.spectrum = False
+        self.n_shell = max(n for n, c in enumerate(occ, start = 1) if c)
+        self.level = self.n_shell
+        self.levels = list(range(self.n_shell, min(self.n_shell + 6, 9)))
+        self.r_cur = float(R_INNER + (self.n_shell - 1) * R_STEP)
+        self.lines = []
+        self.event, self.flash = "", None
 
     def ion_text(self):
         """Info showing that electron is detached"""
@@ -107,6 +121,78 @@ class BohrModel:
         tag = " (predicted)" if self.z >= 104 else ""
         return(f"{sym} -> {sym}+ + e-  IE1 = {ie:.2f} eV{tag}  " f"photon <= {1239.84 / ie:.0f} nm")
 
+    def set_spectrum(self, on):
+        """Spectrum mode basically"""
+        if on == self.spectrum:
+            return
+        self.spectrum = on
+        if not on:
+            self.level, self.flash, self.event = self.n_shell, None, ""
+
+    def set_level(self, n, t):
+        """Move the outer electron to set level"""
+        if n == self.level or n not in self.levels:
+            return
+        hi, lo = max(n, self.level), min(n, self.level)
+        dE, nm = transition(hi, lo)
+        absorbed = n > self.level
+        if not absorbed and not any(ln[1:] == (hi, lo) for ln in self.lines):
+            self.lines.append((nm, hi, lo))
+        self.event = (f"n = {self.level} -> {n}: {'absorbs' if absorbed else 'emits'} " f"{nm:.0f} nm ({region(nm)}), {dE:.2f} eV")
+        self.flash = (t, wavelength_to_bgr(nm) or (90, 90, 90), absorbed)
+        self.level = n
+
+    def spectrum_note(self):
+        return("Exact Bohr levels for Hydrogen" if self.z == 1 else "Z-eff = 1 H-like approx, (not this element's real spectrum btw)")
+
+    def _get_cloud(self):
+        if self._cloud is None:
+            self._cloud = build_cloud(self.z, R_INNER, R_STEP, seed = self.z)
+        return self._cloud
+
+    def _ring_segments(self, radius, plane, Rg, centre, focal, spread, width_scale = 1.0):
+        """Projecting ring in segments; only the part in front of the camera"""
+        r = radius * spread
+        ring = np.stack([r * np.cos(self._ring), r * np.sin(self._ring), np.zeros(RING_PTS)], axis = 1)
+        xy, s, valid = self._project(ring @ plane.T @ Rg.T, centre, focal)
+        pts_i = [(int(x), int(y)) for x, y in xy]
+        segs = []
+        for k in range(RING_PTS):
+            k2 = (k + 1) % RING_PTS
+            if valid[k] and valid[k2]:
+                wd = min(60, max(1, int(round(width_scale * RING_W * 0.5 * (s[k] + s[k2])))))
+                segs.append((pts_i[k], pts_i[k2], wd))
+        return segs
+
+    @staticmethod
+    def _stroke(frame, segs, colour):
+        """Neighbour segments should not overdraw (or not look the same at least)"""
+        for a, b, wd in segs:
+            cv2.line(frame, a, b, C_OUTLINE, wd + 2, cv2.LINE_AA)
+        for a, b, wd in segs:
+            cv2.line(frame, a, b, colour, wd, cv2.LINE_AA)
+
+    def _draw_cloud(self, frame, centre, Rg, spread, focal):
+        """Orbital view, the cloud is shown as 2x2 pixel with dark halo"""
+        base, col = self._get_cloud()
+        pts = (base * spread) @ Rg.T
+        xy, s, valid = self._project(pts, centre, focal)
+        order = np.argsort(-pts[:, 2])
+        xy, s, valid, col = xy[order], s[order], valid[order], col[order]
+        ix, iy = xy[:, 0].astype(int), xy[:, 1].astype(int)
+        hgt, wid = frame.shape[:2]
+        ok = valid & (ix >= 1) & (ix < wid - 3) & (iy >= 1) & (iy < hgt - 3)
+        ix, iy, s, col = ix[ok], iy[ok], s[ok], col[ok]
+        if len(ix) == 0:
+            return
+        shade = np.clip(0.45 + 0.55 * (s - s.min()) / (np.ptp(s) + 1e-6), 0.45, 1.0)
+        col = (col * shade[:, None]).astype(np.uint8)
+        for dy in range(-1, 3):             # change second digit to increase pixel size of e- cloud
+            for dx in range(-1, 3):         # same as above
+                frame[iy + dy, ix + dx] = C_OUTLINE
+        for dy in range(2):                 # just add both digits in dx, dy ranges
+            for dx in range(2):             # same as above
+                frame[iy + dy, ix + dx] = col       # dont make it big as it crashes for big elements
     @staticmethod
     def _project(pts, centre, focal):
         """Perspective-project (N,3) points -> (N,2) screen px, plus scale s."""
@@ -130,75 +216,82 @@ class BohrModel:
                 self.green_t += dt
         self.green_xy = None
 
+        target = R_INNER + (self.level - 1) * R_STEP
+        self.r_cur += (target - self.r_cur) * min(1.0, dt * 6.0)
+        orbital = (self.view == "orbitals")
+
         #meow meow
 
-        # 1) Orbit rings: constant stroke width; only the part in front of the camera.
-        for sh in self.shells:
-            r = sh["r"] * spread
-            ring = np.stack([r * np.cos(self._ring), r * np.sin(self._ring), np.zeros(RING_PTS)], axis = 1)            
-            xy, s, valid = self._project(ring @ sh["R"].T @ Rg.T, centre, focal)
-            pts_i = [(int(x), int(y)) for x, y in xy]
-            segs = []
-            for k in range(RING_PTS):
-                k2 = (k + 1) % RING_PTS
-                if valid[k] and valid[k2]:
-                    wd = min(60, max(1, int(round(RING_W * 0.5 * (s[k] + s[k2])))))
-                    segs.append((pts_i[k], pts_i[k2], wd))
+        # 1) Orbit rings (Bohr view) or the orbital cloud (orbital view).
+        if orbital:
+            self._draw_cloud(frame, centre, Rg, spread, focal)
+        else:
+            for sh in self.shells:
+                self._stroke(frame, self._ring_segments(sh["r"], sh["R"], Rg, centre, focal, spread),
+                             (255, 255, 255))
+            if self.spectrum:                           # faint rings for the other selectable levels
+                plane = self.shells[-1]["R"]            # drawn in the outer electron's orbital plane
+                for n in self.levels:
+                    if n != self.n_shell:
+                        self._stroke(frame, self._ring_segments(R_INNER + (n - 1) * R_STEP, plane, Rg,
+                                                                centre, focal, spread, 0.5), (170, 170, 170))
 
-            for a, b, wd in segs:
-                cv2.line(frame, a, b, C_OUTLINE, wd + 2, cv2.LINE_AA)
-            for a, b, wd in segs:
-                cv2.line(frame, a, b, (255, 255, 255), wd, cv2.LINE_AA)
-                        #poly = xy[run].astype(np.int32).reshape(-1, 1, 2)
-                        #cv2.polylines(frame, [poly], False, C_OUTLINE, RING_PX + 2, cv2.LINE_AA)
-                        #cv2.polylines(frame, [poly], False, (255, 255, 255), RING_PX, cv2.LINE_AA)
-
-        # 2) Collect all particles: positions, colours, base radii.
+        # 2) Collect particles: nucleus always; electrons only in the Bohr view.
         pts = [(self.nuc * spread) @ Rg.T]
         cols = [[C_PROTON if p else C_NEUTRON for p in self.is_proton]]
         rads = [np.full(len(self.nuc), 3.2)]
         green_idx = None
-        for k, sh in enumerate(self.shells):
-            r = sh["r"] * spread
-            ang = sh["phase"] + sh["omega"] * self.orbit_t + 2 * np.pi * np.arange(sh["count"]) / sh["count"]
-            outer = (k == len(self.shells) - 1)
-            if outer:
-                ang[0] = sh["phase"] + sh["omega"] * self.green_t
-            local = np.stack([r * np.cos(ang), r * np.sin(ang), np.zeros(sh["count"])], axis = 1)
-            col = [C_ELECTRON] * sh["count"]
-            rad = np.full(sh["count"], 4.0)
-            if outer:
-                if self.detached:
-                    local, col, rad = local[1:], col[1:], rad[1:]
-                else:
-                    col[0] = C_GREEN
-                    green_idx = sum(len(p) for p in pts)
-            pts.append(local @ sh["R"].T @ Rg.T)
-            cols.append(col)
-            rads.append(rad)
+        if not orbital:
+            for k, sh in enumerate(self.shells):
+                ang = sh["phase"] + sh["omega"] * self.orbit_t + 2 * np.pi * np.arange(sh["count"]) / sh["count"]
+                rr = np.full(sh["count"], sh["r"] * spread)
+                outer = (k == len(self.shells) - 1)     # last shell = outermost occupied
+                if outer:                               # electron 0: private clock, animated radius
+                    ang[0] = sh["phase"] + sh["omega"] * self.green_t
+                    rr[0] = self.r_cur * spread
+                local = np.stack([rr * np.cos(ang), rr * np.sin(ang), np.zeros(sh["count"])], axis=1)
+                col = [C_ELECTRON] * sh["count"]
+                rad = np.full(sh["count"], 4.0)
+                if outer:
+                    if self.detached:                   # electron 0 is parked: leave it out
+                        local, col, rad = local[1:], col[1:], rad[1:]
+                    else:
+                        col[0] = C_GREEN
+                        green_idx = sum(len(p) for p in pts)
+                pts.append(local @ sh["R"].T @ Rg.T)
+                cols.append(col)
+                rads.append(rad)
         pts, rads = np.concatenate(pts), np.concatenate(rads)
         cols = [c for group in cols for c in group]
 
-        # 3) Project, depth-sort (painter's algorithm: far first), draw.
+        # 3) Project, depth-sort (far first), draw.
         xy, s, valid = self._project(pts, centre, focal)
         for i in np.argsort(-pts[:, 2]):
             if not valid[i]:
                 continue
             x, y = int(xy[i, 0]), int(xy[i, 1])
-            r = min(MAX_R, max(1, int(round(rads[i] * s[i] * spread))))   # particles scale
-            cv2.circle(frame, (x, y), r + 1, C_OUTLINE, -1, cv2.LINE_AA)   # outline
+            r = min(MAX_R, max(1, int(round(rads[i] * s[i] * spread))))
+            cv2.circle(frame, (x, y), r + 1, C_OUTLINE, -1, cv2.LINE_AA)
             cv2.circle(frame, (x, y), r, cols[i], -1, cv2.LINE_AA)
-            if i == green_idx:
+            if i == green_idx:                          # pick-up target: ring + remember position
                 cv2.circle(frame, (x, y), r + 5, C_OUTLINE, 3, cv2.LINE_AA)
                 cv2.circle(frame, (x, y), r + 5, C_GREEN, 1, cv2.LINE_AA)
                 self.green_xy, self.green_r = (x, y), r
+
+        # 4) Photon flash around the electron: expands on emission, contracts on absorption.
+        if self.flash and self.green_xy is not None and not orbital:
+            t_start, colour, absorbed = self.flash
+            f = (t - t_start) / 0.9
+            if 0 <= f < 1:
+                rad = int(15 + 90 * ((1 - f) if absorbed else f))
+                cv2.circle(frame, self.green_xy, rad, C_OUTLINE, 5, cv2.LINE_AA)
+                cv2.circle(frame, self.green_xy, rad, colour, 3, cv2.LINE_AA)
 
 # ---- UI helpers -----------------------------------------------------------
 def put_label(frame, text, pos, scale=0.55):
     """Plain black text, no halo."""
     cv2.putText(frame, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale,
                 (0, 0, 0), 1, cv2.LINE_AA)
-
 
 def back_rect(w, h):
     """BACK button rectangle (x0, y0, x1, y1), bottom-right corner."""
@@ -212,13 +305,66 @@ def side_rect(w, slot):
     y = 30 + 38 * slot
     return(w - 130, y, w - 12, y + 32)
 
-def draw_toggle(frame, rect, text):
+def draw_toggle(frame, rect, text, scale = 0.5):
     """Toggle button"""
     x0, y0, x1, y1 = rect
     cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 255), 2)
     cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 0, 0), 1)
-    put_label(frame, text, (x0 + 8, y0 + 21), 0.5)
-     
+    put_label(frame, text, (x0 + 6, y0 + 21), scale)
+
+def level_rects(w, h, count):
+    """Left-hand column just below PREV"""
+    y0 = h // 2 + 30
+    return[(8, y0 + 22 * i, 66, y0 + 22 * i + 20) for i in range(count)]
+
+def draw_level_buttons(frame, rects, levels, current):
+    for(x0, y0, x1, y1), n in zip(rects, levels):
+        if n == current:
+            cv2.rectangle(frame, (x0, y0), (x1, y1), C_GREEN, -1)
+        cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 255), 2)
+        cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 0, 0), 1)
+        put_label(frame, f"n = {n}", (x0 + 10, y0 + 15), 0.45)
+
+SPEC_LO, SPEC_HI = 380, 750
+
+@lru_cache(maxsize = 4)
+def _rainbow(wd, ht):
+    """Dimming the rainbow background for spectrum"""
+    bar = np.zeros((ht, wd, 3), np.uint8)
+    for i in range(wd):
+        nm = SPEC_LO + (SPEC_HI - SPEC_LO) * i / max(1, wd - 1)
+        c = wavelength_to_bgr(nm)
+        if c is not None:
+            bar[:, i] = tuple(int(v * 0.45) for v in c)
+    return bar
+
+def draw_spectrum(frame, w, h, model):
+    """Emission-line strip with a note and last event"""
+    x0, x1, y0, y1 = 240, w - 110, h - 70, h - 46
+    wd = x1 - x0
+    frame[y0:y1, x0:x1] = _rainbow(wd, y1 - y0)
+    hidden = 0
+    for nm, _, _ in model.lines:
+        c = wavelength_to_bgr(nm)
+        if c is None:
+            hidden += 1
+            continue
+        x = x0 + int((nm - SPEC_LO) / (SPEC_HI - SPEC_LO) * (wd - 1))
+        cv2.line(frame, (x, y1), (x, y1 + 4), (0, 0, 0), 1)
+        put_label(frame, str(nm), (x - 10, y1 + 15), 0.33)
+    put_label(frame, model.spectrum_note(), (x0, y0 - 26), 0.38)
+    if hidden:
+        put_label(frame, f"{hidden} more UV/IR line(s) not shown", (x0, y1 + 30), 0.38)
+
+def draw_orbital_legend(frame, h):
+    """Self defining name"""
+    for i, (label, l) in enumerate([("s orbital", 0), ("p orbital", 1), ("d orbital", 2), ("f ornital", 3)]):
+        y = h - 68 + i * 16
+        cv2.circle(frame, (18, y), 6, C_OUTLINE, -1, cv2.LINE_AA)
+        cv2.circle(frame, (18, y), 5, ORB_COL[l], -1, cv2.LINE_AA)
+        put_label(frame, label, (30, y + 5), 0.45)
+
+
 def draw_mode_button(frame, rect, manual):
     x0, y0, x1, y1 = rect
     cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 255), 2)
