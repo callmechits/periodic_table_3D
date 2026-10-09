@@ -57,7 +57,7 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Live FPS counter
 - Element-category color coding
 - Real-time hand tracking using MediaPipe
-- Stop the element's rotation completely
+- Stop the element's rotation completely to look at it statically
 - Take out outermost electron and learn about I.E. 1 (first ionization energy)
 
 ### **Currently Working On**
