@@ -57,9 +57,11 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Live FPS counter
 - Element-category color coding
 - Real-time hand tracking using MediaPipe
+- Stop the element's rotation completely
+- Take out outermost electron and learn about I.E. 1 (first ionization energy)
 
 ### **Currently Working On**
 
 - Thinking of adding a custom builder which allows you to input n/p/e to build custom elements (and maybe display reasons why a given element cannot be built)
-- Maybe adding isotopes for all elements
+- ~~Maybe adding isotopes for all elements~~ (way too fricking big)
 - Sizes of orbits, neutrons, electrons, protons
