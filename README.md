@@ -71,7 +71,6 @@ VOILA!!! Just keep practicing your rectangles LOL.
 - Predicting atomic radius and other trends using Slater's Rule and H-like approximation
 - Predictive atomic spectroscopy engine
 - Actually using quantum probability densities in orbitals.py
-- Predicting nuclear stability and binding energy
-- Predicting ionization energies (actually training a model)
 - Computational chemistry engine (very advanced involving higher maths)
+- AND MORE...
 - Here's the whole notebook of ideas - [notebook](https://1drv.ms/o/c/1e793c8faba2d9c8/IgCujmALrDVVTas-5QU3xHrsASIpz31ukJxoqWpkm5AeJ7U?e=Yqi6ZA)
