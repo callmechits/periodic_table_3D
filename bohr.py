@@ -8,6 +8,7 @@ from ionization import IE1
 from functools import lru_cache
 from spectra import transition, wavelength_to_bgr, region
 from orbitals import build_cloud, config_lines, COL as ORB_COL
+from orbital_view import OrbitalScene
 
 # ---- Tunable parameters -------------------------------------------------
 NUC_CAP = 30                  # max nucleons drawn; heavier nuclei are scaled down
@@ -102,7 +103,7 @@ class BohrModel:
         self.green_xy, self.green_r = None, 0
         self.green_t, self._last_t = 0.0, 0.0
         self.view = "bohr"
-        self._cloud = None
+        self.scene = OrbitalScene(z)
 
         # --- Spectrum ---
         self.spectrum = False
@@ -145,11 +146,6 @@ class BohrModel:
     def spectrum_note(self):
         return("Exact Bohr levels for Hydrogen" if self.z == 1 else "Z-eff = 1 H-like approx, (not this element's real spectrum btw)")
 
-    def _get_cloud(self):
-        if self._cloud is None:
-            self._cloud = build_cloud(self.z, R_INNER, R_STEP, seed = self.z)
-        return self._cloud
-
     def _ring_segments(self, radius, plane, Rg, centre, focal, spread, width_scale = 1.0):
         """Projecting ring in segments; only the part in front of the camera"""
         r = radius * spread
@@ -172,27 +168,6 @@ class BohrModel:
         for a, b, wd in segs:
             cv2.line(frame, a, b, colour, wd, cv2.LINE_AA)
 
-    def _draw_cloud(self, frame, centre, Rg, spread, focal):
-        """Orbital view, the cloud is shown as 2x2 pixel with dark halo"""
-        base, col = self._get_cloud()
-        pts = (base * spread) @ Rg.T
-        xy, s, valid = self._project(pts, centre, focal)
-        order = np.argsort(-pts[:, 2])
-        xy, s, valid, col = xy[order], s[order], valid[order], col[order]
-        ix, iy = xy[:, 0].astype(int), xy[:, 1].astype(int)
-        hgt, wid = frame.shape[:2]
-        ok = valid & (ix >= 1) & (ix < wid - 3) & (iy >= 1) & (iy < hgt - 3)
-        ix, iy, s, col = ix[ok], iy[ok], s[ok], col[ok]
-        if len(ix) == 0:
-            return
-        shade = np.clip(0.45 + 0.55 * (s - s.min()) / (np.ptp(s) + 1e-6), 0.45, 1.0)
-        col = (col * shade[:, None]).astype(np.uint8)
-        for dy in range(-1, 3):             # change second digit to increase pixel size of e- cloud
-            for dx in range(-1, 3):         # same as above
-                frame[iy + dy, ix + dx] = C_OUTLINE
-        for dy in range(2):                 # just add both digits in dx, dy ranges
-            for dx in range(2):             # same as above
-                frame[iy + dy, ix + dx] = col       # dont make it big as it crashes for big elements
     @staticmethod
     def _project(pts, centre, focal):
         """Perspective-project (N,3) points -> (N,2) screen px, plus scale s."""
@@ -218,13 +193,13 @@ class BohrModel:
 
         target = R_INNER + (self.level - 1) * R_STEP
         self.r_cur += (target - self.r_cur) * min(1.0, dt * 6.0)
-        orbital = (self.view == "orbitals")
-
+        orbital = self.view != "bohr"
         #meow meow
 
         # 1) Orbit rings (Bohr view) or the orbital cloud (orbital view).
         if orbital:
-            self._draw_cloud(frame, centre, Rg, spread, focal)
+            self.scene.draw(frame, self.view, centre, Rg, spread, focal, self._project)
+            return
         else:
             for sh in self.shells:
                 self._stroke(frame, self._ring_segments(sh["r"], sh["R"], Rg, centre, focal, spread),
@@ -355,15 +330,6 @@ def draw_spectrum(frame, w, h, model):
     put_label(frame, model.spectrum_note(), (x0, y0 - 26), 0.38)
     if hidden:
         put_label(frame, f"{hidden} more UV/IR line(s) not shown", (x0, y1 + 30), 0.38)
-
-def draw_orbital_legend(frame, h):
-    """Self defining name"""
-    for i, (label, l) in enumerate([("s orbital", 0), ("p orbital", 1), ("d orbital", 2), ("f ornital", 3)]):
-        y = h - 68 + i * 16
-        cv2.circle(frame, (18, y), 6, C_OUTLINE, -1, cv2.LINE_AA)
-        cv2.circle(frame, (18, y), 5, ORB_COL[l], -1, cv2.LINE_AA)
-        put_label(frame, label, (30, y + 5), 0.45)
-
 
 def draw_mode_button(frame, rect, manual):
     x0, y0, x1, y1 = rect
