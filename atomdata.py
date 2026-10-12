@@ -38,3 +38,16 @@ EXCEPTIONS = {
     111: {(6, 2): 10, (7, 0): 1},          # Rg  6d10 7s1
 }
 NOBLE_CORES = [(86, "Rn"), (54, "Xe"), (36, "Kr"), (18, "Ar"), (10, "Ne"), (2, "He")]
+
+def config(z):
+    """Ground-state configuration as {(n, l): electrons}, only occupied subshells."""
+    cfg, left = {}, z
+    for n, l in AUFBAU:                                # Madelung fill
+        take = min(left, 2 * (2 * l + 1))
+        cfg[(n, l)] = take
+        left -= take
+    cfg.update(EXCEPTIONS.get(z, {}))                  # apply the known exceptions
+    cfg = {k: e for k, e in cfg.items() if e > 0}
+    assert sum(cfg.values()) == z, f"configuration for Z={z} does not sum to Z"
+    return cfg
+
