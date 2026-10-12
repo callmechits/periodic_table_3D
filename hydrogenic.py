@@ -85,4 +85,63 @@ _PI = math.pi
 _C = {
     "s": 0.5 / math.sqrt(_PI),
     "p": math.sqrt(3.0 / (4.0 * _PI)),
-    "dz2": 
+    "dz2": 0.25 * math.sqrt(5.0 / _PI),
+    "d": 0.5 * math.sqrt(15.0 / _PI),
+    "dx2y2": 0.25 * math.sqrt(15.0 / _PI),
+    "fz3": 0.25 * math.sqrt(7.0 / _PI),
+    "fxz2": 0.25 * math.sqrt(21.0 / (2.0 * _PI)),
+    "fxyz": 0.5 * math.sqrt(105.0 / _PI),
+    "fzxy": 0.25 * math.sqrt(105.0 / _PI),
+    "f3": 0.25 * math.sqrt(35.0 / (2.0 * _PI)),
+}
+
+
+def ylm(l, mi, x, y, z):
+  """One real Y_lm (index mi, same order as ORBITAL_NAMES) at unit vectors (x, y, z).
+  Only the requested component is evaluated, which keeps rejection sampling fast."""
+  x, y, z = (np.asarray(a, dtype = float) for a in (x, y, z))
+  if l == 0:
+    return _C["s"] * np.ones_like(x)
+  if l == 1:
+    return _C["p"] * (x, y, z)[mi]
+  if l == 2:
+    if mi == 0: return _C["dz2"] * (3 * z * z - 1)
+    if mi == 1: return _C["d"] * x * z
+    if mi == 2: return _C["d"] * y * z
+    if mi == 3: return _C["d"] * x * y
+    return _C["dx2y2"] * (x * x - y * y)
+  if l == 3:
+    if mi == 0: return _C["fz3"] * z * (5 * z * z -3)
+    if mi == 1: return _C["fxz2"] * x * (5 * z * z - 1)
+    if mi == 2: return _C["fxz2"] * y * (5 * z * z -1)
+    if mi == 3: return _C["fxyz"] * x * y * z
+    if mi == 4: return _C["fzxy"] * z * (x * x - y * y)
+    if mi == 5: return _C["f3"] * x * (x * x - 3 * y * y)
+    return _C["f3"] * y * (3 * x * x - y * y)
+  raise ValueError("1 must be 0..3")
+
+
+def real_ylm(l, x, y, z):
+  """All 2l+1 real Y_lm at unit vectors (x, y, z). Returns shape (2l+1,) + x.shape.
+  The real harmonics are Cartesian polynomials of the unit vector (1, 3, 5, 7 of them)."""
+  return np.stack([ylm(l, i, x, y, z) for i in range(2 * l + 1)])
+
+
+def psi(n, l, mi, x, y, z, Z = 1.0):
+  """psi_{n l m}(x, y, z) for the real orbital with index mi (Cartesian input, a0)."""
+  x, y, z = (np.asarray(a, dtype = float) for a in (x, y, z))
+  r = np.sqrt(x * x + y * y + z * z)
+  safe = np.where(r > 0, r, 1.0)    # arbitrary direction at the origin
+  ux, uy, uz = x / safe, y / safe, np.where(r > 0, z / safe, 1.0)
+  return R(n, l, r, Z) * ylm(l, mi, ux, uy, uz)
+
+
+def angular_max(l, mi, npts = 400000):
+  """Upper bound on |Y_lm|^2 over the sphere (for rejection sampling): a dense
+  Fibonacci-sphere maximum plus a 1% margin."""
+  i = np.arange(npts) + 0.5
+  uz = 1.0 - 2.0 * i / npts
+  s = np.sqrt(1.0 - uz * uz)
+  phi = i * math.pi * (3.0 - math.sqrt(5.0))
+  f = ylm(l, mi, s * np.cos(phi), s * np.sin(phu), uz) ** 2
+  return float(f.max()) * 1.01
