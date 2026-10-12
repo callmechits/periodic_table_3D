@@ -7,12 +7,12 @@ import mediapipe as mp
 from elements import ELEMENTS, grid_pos, category
 from gesture import RectGesture, INDEX_TIP
 from selection import Selector, THUMB_TIP, draw_progress
-from bohr import (BohrModel, put_label, back_rect, draw_back_button, draw_legend, mode_rect, draw_mode_button, draw_rotate_marker, YAW_SPEED, nav_rects, draw_nav_button, rect_around, park_pos, draw_parked_electron, side_rect, draw_toggle, level_rects, draw_level_buttons, draw_spectrum, draw_orbital_legend)
-from orbitals import config_lines
+from bohr import (BohrModel, put_label, back_rect, draw_back_button, draw_legend, mode_rect, draw_mode_button, draw_rotate_marker, YAW_SPEED, nav_rects, draw_nav_button, rect_around, park_pos, draw_parked_electron, side_rect, draw_toggle, level_rects, draw_level_buttons, draw_spectrum)
 from camera import CameraThread
 from selection import Selector, THUMB_TIP, draw_progress, PointSmoother
 from pinch import PinchZoom
 from rotate import RotateControl
+from orbital_view import picker_rects, draw_picker_buttons, draw_legend as draw_scene_legend
 
 CELL = 34      # cell side in pixels (18 * 34 = 612 fits a 640 px frame)
 GAP = 10       # vertical gap between the main table and the f-block rows
@@ -96,7 +96,7 @@ def main():
     pinch = PinchZoom(zmin = 0.3, zmax = 10.0)
     rot, manual, t_last = RotateControl(), False, 0.0
     paused, zoom_locked = False, False
-    view_orbital, spec_on = False, False
+    view, spec_on = "bohr", False
 
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity = 0, 
                                      min_detection_confidence=0.6,
@@ -151,21 +151,25 @@ def main():
                 prev_z = (model.z - 2) % 118 + 1
                 next_z = model.z % 118 + 1
                 zones = {"back": back_rect(w, h), "mode": mode_rect(w, h), "orbit": side_rect(w, 1), "zoom": side_rect(w, 2), "view": side_rect(w, 3), "prev": nav_prev, "next": nav_next}
-                if not view_orbital:
+                lv_rects, pk_rects = [], []
+
+                if view == "bohr":
                     zones["spec"] = side_rect(w, 4)
-                lv_rects = []
-                if spec_on and not view_orbital:
-                    lv_rects = level_rects(w, h, len(model.levels))
-                    for i, rc in enumerate(lv_rects):
-                        zones[f"lv{i}"] = rc
-                if not (spec_on or view_orbital):
-                    if model.detached:
+                    if spec_on:
+                        lv_rects = level_rects(w, h, len(model.levels))
+                        for i, rc in enumerate(lv_rects): 
+                            zones[f"lv{i}"] = rc
+                    elif model.detached:
                         zones["electron"] = rect_around(park_pos(w, h), 26)
                     elif model.green_xy is not None:
                         zones["electron"] = rect_around(model.green_xy, max(model.green_r + 14, 24))
+                elif view == "orbital":
+                    pk_rects = picker_rects(w, h)
+                    for key, rc in zip(("pick_n", "pick_l", "pick_m"), pk_rects): 
+                        zones[key] = rc
+                    zones["style"] = side_rect(w, 4)
                 
                 dt, t_last = now - t_last, now
-                
                 mid = rot.update([l.landmark for l in hands_lm], w, h) if manual else rot.release_hand()
                 if not manual:
                     rot.spin(dt, YAW_SPEED)          # auto-spin advances the shared yaw
@@ -173,48 +177,52 @@ def main():
                 hover, progress, chosen = selector.update([] if mid else thumbs, zones, now)
                 model.hold = (hover == "electron")
                 zoom = pinch.update(None if (mid or zoom_locked) else (hands_lm[0].landmark if hands_lm else None), w, h)
-                model.paused = paused
-                model.view = "orbitals" if view_orbital else "bohr"
-                model.set_spectrum(spec_on and not view_orbital)
-                model.paused = paused
-                model.render(frame, (w // 2, h // 2), now - t0, zoom, rot.yaw, rot.pitch)
-
-                if not view_orbital:
-                    if model.detached:
-                        draw_parked_electron(frame, park_pos(w, h))
-                    ion = model.ion_text()
-                    draw_legend(frame, h)
-                    if spec_on:
-                        draw_level_buttons(frame, lv_rects, model.levels, model.level)
-                        draw_spectrum(frame, w, h, model)
-
-                else:
-                    for i, line in enumerate(config_lines(model.z)):
-                        put_label(frame, line, (10, 84 + 16 * i), 0.42)
-                    draw_orbital_legend(frame, h)
 
                 
+                model.paused = paused
+                model.view = view
+                model.set_spectrum(spec_on and view == "bohr")
+                model.render(frame, (w // 2, h // 2), now - t0, zoom, rot.yaw, rot.pitch)
+
                 put_label(frame, model.info, (10, 24))
                 put_label(frame, f"zoom {zoom:.2f}x", (10, 44))
 
-                if spec_on and model.event:
-                    put_label(frame, model.event, (10, 64), 0.38)
                 if manual:
-                    put_label(frame, "index + middle together: drag to rotate", (10, 84), 0.45)
-                draw_back_button(frame, zones["back"])
-                draw_mode_button(frame, zones["mode"], manual)
-                draw_toggle(frame, zones["orbit"], "ORBIT: " + ("HOLD" if paused else "RUN"))
-                draw_toggle(frame, zones["zoom"], "ZOOM: " + ("LOCK" if zoom_locked else "FREE"))
-                draw_nav_button(frame, nav_prev, "< " + ELEMENTS[prev_z][0])
-                draw_nav_button(frame, nav_next, ELEMENTS[next_z][0] + " >")
-                draw_toggle(frame, zones["view"], "VIEW: " + ("ORBITAL" if view_orbital else "BOHR"), 0.42)
-                if not view_orbital:
-                    draw_toggle(frame, zones["spec"], "SPEC: " + ("ON" if spec_on else "OFF"))
+                    put_label(frame, "index + middle together: drag to rotate", (10, 64), 0.45)
+                if view == "bohr":
+                    draw_legend(frame, h)
                     if model.detached:
                         draw_parked_electron(frame, park_pos(w, h))
                         ion = model.ion_text()
                         if ion:
-                            put_label(frame, ion, (10, 104), 0.38)
+                            put_label(frame, ion, (10, 84), 0.5)
+                    if spec_on:
+                        draw_level_buttons(frame, lv_rects, model.levels, model.level)
+                        draw_spectrum(frame, w, h, model)
+                else:
+                    for i, line in enumerate(model.scene.hud_lines(view)):
+                        put_label(frame, line, (10, 84 + 16 * i), 0.42)
+                    draw_scene_legend(frame, h, view)
+                    if view == "orbital":
+                        draw_picker_buttons(frame, pk_rects, model.scene.picker_labels())
+
+                if spec_on and model.event:
+                    put_label(frame, model.event, (10, 64), 0.38)
+                draw_back_button(frame, zones["back"])
+                draw_mode_button(frame, zones["mode"], manual)
+                draw_toggle(frame, zones["orbit"], "ORBIT: " + ("HOLD" if paused else "RUN"))
+                draw_toggle(frame, zones["zoom"], "ZOOM: " + ("LOCK" if zoom_locked else "FREE"))
+                draw_toggle(frame, zones["view"], "VIEW: " + view.upper(), 0.42)
+                if view == "bohr":
+                    draw_toggle(frame, zones["spec"], "SPEC: " + ("ON" if spec_on else "OFF"))
+                elif view == "orbital":
+                    draw_toggle(frame, zones["style"], "STYLE: " + model.scene.style_label(), 0.42)
+                draw_toggle(frame, zones["orbit"], "ORBIT: " + ("HOLD" if paused else "RUN"))
+                draw_toggle(frame, zones["zoom"], "ZOOM: " + ("LOCK" if zoom_locked else "FREE"))
+                draw_nav_button(frame, nav_prev, "< " + ELEMENTS[prev_z][0])
+                draw_nav_button(frame, nav_next, ELEMENTS[next_z][0] + " >")
+
+
                 if hover in zones:
                     draw_progress(frame, zones[hover], progress)
                 if mid:
@@ -232,7 +240,11 @@ def main():
                 elif chosen == "zoom":
                     zoom_locked = not zoom_locked
                 elif chosen == "view":
-                    view_orbital = not view_orbital
+                    view = {"bohr":  "atom", "atom": "orbital", "orbital": "bohr"}[view]
+                elif chosen == "pick_n": model.scene.cycle_n()
+                elif chosen == "pick_l": model.scene.cycle_l()
+                elif chosen == "pick_m": model.scene.cycle_m()
+                elif chosen == "style": model.scene.cycle_style()
                 elif chosen == "spec":
                     spec_on = not spec_on
                 elif chosen and chosen.startswith("lv"):
