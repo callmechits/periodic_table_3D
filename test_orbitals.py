@@ -193,3 +193,20 @@ check("atom_cloud for all 118 elements: finite, weights sum to Z", ok, f"slowest
 
 seen = set(); sc = V.OrbitalScene(26)
 
+for _ in range(7):
+    sc.cycle_n()
+    for _ in range(4):
+        sc.cycle_l()
+        for _ in range(7): sc.cycle_m(); seen.add((sc.n, sc.l, sc.mi))
+
+check("picker reaches all 78 orbitals with n<=7, l<=3", len(seen) == 78 == sum(2 * l + 1 for n in range(1, 8) for l in range(min(n, 4))))
+
+if "--full" in sys.argv:
+    bad = []
+    for (n, l, mi) in sorted(seen):
+        mm = I.OrbitalMesh(n, l, mi, A.slater_zeff(26, n, l)); ss = I.mesh_stats(mm.verts, mm.faces)
+        if ss["closed"] < 0.999 or len(mm.faces) == 0: bad.append((n, l, mi))
+    check("all 78 pickable meshes build and are closed (Z=26 Z_eff)", not bad, str(bad))
+
+print(f"\n{len(FAILS)} failed, {time.time() - T0:.0f} s")
+sys.exit(1 if FAILS else 0)
