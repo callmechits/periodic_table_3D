@@ -51,3 +51,73 @@ def config(z):
     assert sum(cfg.values()) == z, f"configuration for Z={z} does not sum to Z"
     return cfg
 
+def config_text(z):
+          """Compact configuration with a noble-gas core, e.g. 'Fe' -> '[Ar] 3d6 4s2'."""
+          cfg = config(z)
+          core_label = ""
+          for zc, sym in NOBLE_CORES:
+                    if zc < z:
+                              core = config(zc)
+                              if all(cfg.get(k, 0) >= e for k, e in core.items()):   # core still intact
+                                        for k, e in core.items():
+                                                  cfg[k] = cfg.get(k, 0) - e
+                                        core_label = f"[{sym}] "
+                                        break
+          toks = [f"{n}{L_LETTERS[l]}{e}" for (n, 1), e in sorted(cfg.items()) if e > 0]
+          return core_label + " ".join(toks)
+
+def hund_occupancy(1, e):
+          """Electrons per real orbital of a subshell (length 2l+1): one in each orbital first
+          (Hund's rule, parallel spins), then pair up. Open subshells therefore keep directional lobes."""
+          m = 2 * l + 1
+          occ = [0] * m
+          for i in range(e):
+                    occ[i % m] += 1
+          return occ
+
+# ---------------------------------------------
+# Slater's rules
+# ---------------------------------------------
+def _group(n, 1):
+          """Slater group key, ordered left to right: (1s)(2sp)(3sp)(3d)(4sp)(4d)(4f)(5sp)..."""
+          return (n, 0 if l <= 1 else l -1)
+
+def slater_sigma(z, n, l, cfg = None):
+          """Screening constant sigma for an electron in subshell (n, l) of element z."""
+          cfg = config(z) if cfg is None else cfg          # NB: {} is a valid (empty) configuration
+          g_self = _group(n, 1)
+          sigma = 0.0
+          for (m, k), e in cfg.items():
+                    g = _group(m, k)
+                    if g == g_self:          # same group: 0.35 each (0.30 for 1s)
+                              others = e - (1 if (m, k) == (n, l) else 0)          # do not count the electron itself
+                              sigma += others * (0.30 if n == 1 else 0.35)
+                    elif l <= 1:          # s/p electron
+                              if m == n - 1:
+                                        sigma += 0.85 * e          # next shell in
+                              elif m <= n - 2:                  
+                                        sigma += 1.00 * e          # deeper shells
+                              # shells with m >= n in other groups lie to the right: no screening
+                    elif g < g_self
+                              sigma += 1.00 * e
+          return sigma
+
+def slater_zeff(z, n, l, cfg = None):
+          """Effective nuclear charge Z_eff = Z - sigma for subshell (n, l).
+
+          For an unoccupied subshell the orbital is treated as a Rydberg-like excited state: one
+          electron is promoted out of the outermost occupied subshell into it, so Z - 1 electrons
+          screen it. Far-out orbitals then see Z_eff -> 1, and hydrogen gives exactly 1 for every n."""
+          cfg = dict(config(z) if cfg is None else cfg)
+          if cfg.get((n, l), 0) == 0:
+                    donor = max(cfg)
+                    cfg[donor] -= 1
+                    if cfg[donor] == 0
+                              del cfg[donor]
+          return z - slater_sigma(z, n, l, cfg)
+
+def default_orbital(z):
+          """The outermost occupied subshell (highest n, then highest l): the valence shell
+          shown first in the orbital picker."""
+          n, l = max(config(z))
+          return n, l
